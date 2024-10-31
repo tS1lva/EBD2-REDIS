@@ -1,6 +1,9 @@
 import { ResultSetHeader } from "mysql2"
 import { conn } from "./db"
 import { Product } from "./product"
+import Redis from "ioredis"
+
+const redis = new Redis();
 
 export class ProductsRepository {
 
@@ -13,33 +16,63 @@ export class ProductsRepository {
     })
   }
 
-  getById(product_id: number): Promise<Product | undefined> {
+  async getById(product_id: number): Promise<Product | undefined> {
+    
+    // tenta buscar o produto primeiro no redis
+    const cachedProduct = await redis.get(`product:${product_id}`);
+    if (cachedProduct) {
+
+      // resposta do redis
+      redis.set("testKey", "testValue", (err, reply) => {
+        console.log("Resposta do Redis em Busca por Id:", reply);
+      });
+      
+      return JSON.parse(cachedProduct) as Product;
+    }
+
+    // caso não encontre busca no banco e insere no redis
     return new Promise((resolve, reject) => {
       conn.query<Product[]>(
         "SELECT * FROM PRODUCTS WHERE id = ?",
         [product_id],
-        (err, res) => {
-          if (err) reject(err)
-          else resolve(res?.[0])
+        async (err, res) => {
+          if (err) {
+            reject(err)
+          } else {
+            const product = (res?.[0])
+
+            if(product){
+              await redis.set(`product:${product_id}`, JSON.stringify(product), "EX", 300);
+            }
+
+            resolve(product);
+          }
         }
       )
     })
   }
 
-  create(p: Product): Promise<Product> {
-    return new Promise((resolve, reject) => {
+  async create(p: Product): Promise<Product> {
+    const newProduct = await new Promise<Product>((resolve, reject) => {
       conn.query<ResultSetHeader>(
         "INSERT INTO PRODUCTS (name, price, description) VALUES(?,?,?)",
         [p.name, p.price, p.description],
         (err, res) => {
           if (err) reject(err)
-          else
-            this.getById(res.insertId)
-              .then(user => resolve(user!))
-              .catch(reject)
+          else resolve({id: res.insertId, ...p});
         }
       )
     })
+
+    // adiciona o novo produto no redis
+    await redis.set(`product:${newProduct.id}`, JSON.stringify(newProduct), "EX", 300);
+
+      // resposta do redis
+      redis.set("testKey", "testValue", (err, reply) => {
+      console.log("Resposta do Redis Criando Novo Produto:", reply);
+    });
+
+    return newProduct;
   }
 
   update(p: Product): Promise<Product | undefined> {
@@ -47,9 +80,17 @@ export class ProductsRepository {
       conn.query<ResultSetHeader>(
         "UPDATE PRODUCTS SET name = ?, price = ?, description = ? WHERE id = ?",
         [p.name, p.price, p.description, p.id],
-        (err, res) => {
+        async (err, res) => {
           if (err) reject(err)
           else
+            // atualiza o produto no redis após ser atualizado no banco
+            await redis.set(`product:${p.id}`, JSON.stringify(p), "EX", 300);
+
+            // resposta do redis
+            redis.set("testKey", "testValue", (err, reply) => {
+              console.log("Resposta do Redis Alterando um Produto:", reply);
+            });
+
             this.getById(p.id!)
               .then(resolve)
               .catch(reject)
@@ -63,9 +104,19 @@ export class ProductsRepository {
       conn.query<ResultSetHeader>(
         "DELETE FROM PRODUCTS WHERE id = ?",
         [product_id],
-        (err, res) => {
+        async (err, res) => {
           if (err) reject(err)
-          else resolve(res.affectedRows)
+          else {
+            // remove o produto do redis após ser deletado do banco
+            await redis.del(`product:${product_id}`)
+
+            // resposta do redis
+            redis.set("testKey", "testValue", (err, reply) => {
+              console.log("Resposta do Redis Excluindo um Produto:", reply);
+            });
+
+            resolve(res.affectedRows)
+          }
         }
       )
     })

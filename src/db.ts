@@ -9,4 +9,6 @@ const access: ConnectionOptions = {
     database: process.env.MYSQL_DATABASE
 };
 
+console.log(access);
+
 export const conn = mysql.createConnection(access);
