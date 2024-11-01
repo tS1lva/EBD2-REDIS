@@ -31,50 +31,28 @@ routes.get('/getById/:id', async(req: Request, res: Response)=>{
     res.send(products)
 })
 
-routes.get('/create/:name/:price/:description', async(req: Request, res: Response)=>{
-    //insere um produto.
-    const name = String(req.params.name)
-    const price = Number(req.params.price)
-    const description = String(req.params.description)
+routes.post('/create', async (req: Request, res: Response) => {
+    const { name, price, description } = req.body;
+    const productData: Product = { name, price: Number(price), description } as Product;
+    const newProduct = await productsRepo.create(productData);
+    res.send(newProduct);
+});
 
-    const parameters: Product = {name: name, price: price, description: description} as Product
-    const products = await productsRepo.create(parameters);
-    res.statusCode = 200;
-    res.type('application/json')
-    res.send(products)
-})
+routes.put('/update/:id', async (req: Request, res: Response) => {
+    const id = Number(req.params.id);
+    const { name, price, description } = req.body;
+    const productData: Product = { id, name, price: Number(price), description } as Product;
+    const updatedProduct = await productsRepo.update(productData);
+    res.send(updatedProduct);
+});
 
-routes.get('/update/:name/:price/:description/:id', async(req: Request, res: Response)=>{
-    //altera um produto.
-    const name = String(req.params.name)
-    const price = Number(req.params.price)
-    const description = String(req.params.description)
-    const id = Number(req.params.id)
+routes.delete('/delete/:id', async (req: Request, res: Response) => {
+    const id = Number(req.params.id);
+    const affectedRows = await productsRepo.delete(id);
+    affectedRows > 0 ? res.send("Produto excluído") : res.send("Produto não encontrado");
+});
 
-    const parameters: Product = {name: name, price: price, description: description, id: id} as Product
-    const products = await productsRepo.update(parameters);
-    res.statusCode = 200;
-    res.type('application/json')
-    res.send(products)
-})
-
-routes.get('/delete/:id', async(req: Request, res: Response)=>{
-    //exclui um produto.
-    const id = Number(req.params.id)
-    
-    try {
-        const affectedRows = await productsRepo.delete(id);
-        if (affectedRows > 0) {
-            res.sendStatus(204); 
-        } else {
-            res.status(404).json({ error: 'Produto não encontrado' });
-        }
-    } catch (error) {
-        console.error(error); 
-        res.status(500);
-    }
-})
-
+app.use(express.json())
 // aplicar as rotas na aplicação web backend. 
 app.use(routes);
 
