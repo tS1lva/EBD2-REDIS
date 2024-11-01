@@ -5,16 +5,33 @@ import Redis from "ioredis"
 
 const redis = new Redis();
 
+let i = 0;
+
 export class ProductsRepository {
 
-  getAll(): Promise<Product[]> {
+  async getAll(): Promise<Product[]> {
+    // tenta buscar todos os produtos no redis se ja foram trazidos do banco
+    if (i > 0){
+      const cachedProducts = await redis.get("allProducts");
+      if (cachedProducts) {
+        return JSON.parse(cachedProducts) as Product[];
+      }
+    }
+    
+    // faz a primeira execução no banco para sincronizar os dados no redis
     return new Promise((resolve, reject) => {
-      conn.query<Product[]>("SELECT * FROM PRODUCTS", (err, res) => {
-        if (err) reject(err)
-        else resolve(res)
-      })
-    })
+      conn.query<Product[]>("SELECT * FROM PRODUCTS", async (err, res) => {
+        if (err) {
+          reject(err);
+        } else {
+          await redis.set("allProducts", JSON.stringify(res), "EX", 300);
+          i++;
+          resolve(res);
+        }
+      });
+    });
   }
+  
 
   async getById(product_id: number): Promise<Product | undefined> {
     
