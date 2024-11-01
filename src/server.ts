@@ -58,4 +58,7 @@ app.use(routes);
 
 app.listen(3000, ()=>{
     console.log("Server is running on 3000");
+
+    productsRepo.getAll();
+    console.log("Produtos carregados automaticamente no Redis ao iniciar o servidor.");
 });

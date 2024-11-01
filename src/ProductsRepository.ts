@@ -2,6 +2,7 @@ import { ResultSetHeader } from "mysql2"
 import { conn } from "./db"
 import { Product } from "./product"
 import Redis from "ioredis"
+import { resolve } from "path";
 
 const redis = new Redis();
 
@@ -20,7 +21,7 @@ export class ProductsRepository {
     
     // faz a primeira execução no banco para sincronizar os dados no redis
     return new Promise((resolve, reject) => {
-      conn.query<Product[]>("SELECT * FROM PRODUCTS", async (err, res) => {
+      conn.query<Product[]>("SELECT * FROM products", async (err, res) => {
         if (err) {
           reject(err);
         } else {
@@ -50,7 +51,7 @@ export class ProductsRepository {
     // caso não encontre busca no banco e insere no redis
     return new Promise((resolve, reject) => {
       conn.query<Product[]>(
-        "SELECT * FROM PRODUCTS WHERE id = ?",
+        "SELECT * FROM products WHERE id = ?",
         [product_id],
         async (err, res) => {
           if (err) {
@@ -72,7 +73,7 @@ export class ProductsRepository {
   async create(p: Product): Promise<Product> {
     const newProduct = await new Promise<Product>((resolve, reject) => {
       conn.query<ResultSetHeader>(
-        "INSERT INTO PRODUCTS (name, price, description) VALUES(?,?,?)",
+        "INSERT INTO products (name, price, description) VALUES(?,?,?)",
         [p.name, p.price, p.description],
         (err, res) => {
           if (err) reject(err)
@@ -89,13 +90,16 @@ export class ProductsRepository {
       console.log("Resposta do Redis Criando Novo Produto:", reply);
     });
 
+    // Deleta o cache com todos os produtos, pois este já não será mais atual
+    await redis.del("allProducts");
+
     return newProduct;
   }
 
   update(p: Product): Promise<Product | undefined> {
     return new Promise((resolve, reject) => {
       conn.query<ResultSetHeader>(
-        "UPDATE PRODUCTS SET name = ?, price = ?, description = ? WHERE id = ?",
+        "UPDATE products SET name = ?, price = ?, description = ? WHERE id = ?",
         [p.name, p.price, p.description, p.id],
         async (err, res) => {
           if (err) reject(err)
@@ -111,6 +115,9 @@ export class ProductsRepository {
             this.getById(p.id!)
               .then(resolve)
               .catch(reject)
+
+            // Deleta o cache com todos os produtos, pois este já não será mais atual
+            await redis.del("allProducts");
         }
       )
     })
@@ -119,7 +126,7 @@ export class ProductsRepository {
   delete(product_id: number): Promise<number> {
     return new Promise((resolve, reject) => {
       conn.query<ResultSetHeader>(
-        "DELETE FROM PRODUCTS WHERE id = ?",
+        "DELETE FROM products WHERE id = ?",
         [product_id],
         async (err, res) => {
           if (err) reject(err)
@@ -133,6 +140,9 @@ export class ProductsRepository {
             });
 
             resolve(res.affectedRows)
+            
+            // Deleta o cache com todos os produtos, pois este já não será mais atual
+            await redis.del("allProducts");
           }
         }
       )
